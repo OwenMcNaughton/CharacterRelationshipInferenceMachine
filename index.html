@@ -2,9 +2,9 @@
 <meta charset="utf-8">
 <style>
 
-.node {
-  stroke: #fff;
-  stroke-width: 1.5px;
+.node text {
+  pointer-events: none;
+  font: 10px sans-serif;
 }
 
 .link {
@@ -22,82 +22,138 @@
     <textarea rows='2' cols='55' id='char_id' placeholder=
       'Frodo;Aragorn,Strider;Gandalf,Mithrandir,Grey Pilgrim'></textarea>
     <br>
+     
+    <output for=Distance id=dstout>10</output>
+    <input type=range min=5 max=50 value=10 id=Distance oninput="ButtonUpdate()">
+    <label class="lab">Character Distance</label>
+    <br>
+    
     <input type='button' value='do the thing' onclick='InferRelationships()'>
+
+  
   </div>
   
   <script src = "//d3js.org/d3.v3.min.js"></script>
+  <script src = "fisheye.js"></script>
   <script>
 
-function InferRelationships() {
-  var names = ParseNames();
-  for (var i in names) {
-    for (var j in i) {
-      console.log(j);
+var char_dist = 10;
+
+function HasValue(json, value) {
+  for (var key in json) {
+    if ((json[key].source == value.source && json[key].target == value.target) ||
+        (json[key].source == value.target && json[key].target == value.source)) {
+      json[key].value = json[key].value+1;
+      return true;
     }
   }
+  return false;
+}
+
+function ButtonUpdate() {
+  char_dist = document.querySelector('#Distance').value;
+	document.querySelector('#dstout').value = char_dist;
+	console.log(char_dist);
+}
+
+var nodes = [];
+var links = [];
+
+function InferRelationships() {
+  nodes = [];
+  links = [];
+  
+  var names = ParseNames();
+  var book = document.getElementById('book_id').value.toLowerCase();
+  document.getElementById('book_id').value = "";
+  
+  for (var i = 0; i != names.length; i++) {
+    names[i] = names[i].toLowerCase();
+    nodes.push({"name":names[i]});
+  }
+  
+  for (var i = 0; i != names.length; i++) {
+    var n = 0;
+    do {
+      n = book.indexOf(names[i], n+1);
+      for (var ii = 0; ii != names.length; ii++) {
+      if (ii == i) continue;
+        var len = names[ii].length;
+        if (book.substring(n-char_dist-len, n+char_dist).indexOf(names[ii]) != -1) {
+          if (!HasValue(links, {"source":i,"target":ii})) {
+            links.push({"source":i,"target":ii,"value":1});
+          }
+          console.log(links[links.length-1]);
+        }
+      }
+    } while (n != -1);
+  }
+  CreateGraph();
 }
 
 function ParseNames() {
-  var names_unparsed = document.getElementById('char_id').value;
-  var names_unparsed_aliases = names_unparsed.split(";");
-  var names = {};
-  for (var i = 0; i != names_unparsed_aliases.length; i++) {
-    var aliases = names_unparsed_aliases[i].split(",");
-    names[aliases[0]] = [];
-    for (var j = 0; j != aliases.length; j++) {
-      names[aliases[0]].push(aliases[j]);
+  var char_ids = document.getElementById('char_id').value;
+  var splitzors = char_ids.split(",");
+  var names = [];
+  for (var i = 0; i != splitzors.length; i++) {
+    if (splitzors[i] != "") {
+      names.push(splitzors[i]);
     }
   }
   return names;
 }
 
 function CreateGraph() {
-  var width = 960, height = 500;
+  var width = 600, height = 400;
   
   var color = d3.scale.category20();
   
   var force = d3.layout.force()
-    .charge(-120)
-    .linkDistance(30)
+    .charge(-180)
+    .linkDistance(100)
     .size([width, height]);
     
   var svg = d3.select("body").append("svg")
     .attr("width", width)
     .attr("height", height);
   
-  d3.json("miserables.json", function(error, graph) {
-    if (error) throw error;
+  force
+    .nodes(nodes)
+    .links(links)
+    .start();
     
-    force
-      .nodes(graph.nodes)
-      .links(graph.links)
-      .start();
+  var link = svg.selectAll(".link")
+    .data(links)
+    .enter().append("line")
+    .attr("class", "link")
+    .style("stroke-width", function(d) { return Math.sqrt(d.value); });
+  
+  var node = svg.selectAll(".node")
+    .data(nodes)
+    .enter().append("g")
+    .attr("class", "node")
+    .call(force.drag);
+    
+  node.append("text")
+      .attr("dx", 12)
+      .attr("dy", ".35em")
+      .text(function(d) { return d.name });
       
-    var link = svg.selectAll(".link")
-      .data(graph.links)
-      .enter().append("line")
-      .attr("class", "link")
-      .style("stroke-width", function(d) { return Math.sqrt(d.value); });
-      
-    var node = svg.selectAll(".node")
-      .data(graph.nodes)
-      .enter().append("circle")
-      .attr("class", "node")
-      .attr("r", 5)
-      .style("fill", function(d) { return color(d.group); })
-      .call(force.drag);
-      
-    node.append("title")
-        .text(function(d) { return d.name; });
-        
-    force.on("tick", function() {
-      link.attr("x1", function(d) { return d.source.x; })
-      .attr("y1", function(d) { return d.source.y; })
-      .attr("x2", function(d) { return d.target.x; })
-      .attr("y2", function(d) { return d.target.y; });
-      
-      node.attr("cx", function(d) { return d.x; })
-        .attr("cy", function(d) { return d.y; });
+  node.append("image")
+      .attr("xlink:href", "this.png")
+      .attr("x", -8)
+      .attr("y", -8)
+      .attr("width", 16)
+      .attr("height", 16);
+
+  force.on("tick", function() {
+    link.attr("x1", function(d) { return d.source.x; })
+    .attr("y1", function(d) { return d.source.y; })
+    .attr("x2", function(d) { return d.target.x; })
+    .attr("y2", function(d) { return d.target.y; });
+    
+    node.attr("transform", function(d) { 
+      return "translate(" + d.x + "," + d.y + ")"; 
     });
   });
 }
